@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blue Memory Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .card {
+            transition: all 0.3s ease;
+            transform-style: preserve-3d;
+        }
+        .card.flipped {
+            transform: rotateY(180deg);
+        }
+        .card-face {
+            backface-visibility: hidden;
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 0.5rem;
+        }
+        .card-front {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            color: white;
+            transform: rotateY(180deg);
+        }
+        .card-back {
+            background: linear-gradient(135deg, #93c5fd, #60a5fa);
+            color: white;
+        }
+        .win-message {
+            animation: fadeIn 0.5s, bounce 1s infinite;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.8); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        .pulse {
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body class="bg-blue-50 min-h-screen flex flex-col items-center py-8">
+    <div class="container mx-auto px-4">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-blue-800 mb-2">Blue Memory Game</h1>
+            <p class="text-blue-600">Match all pairs of cards to win!</p>
+            
+            <div class="flex justify-center items-center gap-8 mt-6">
+                <div class="bg-white p-4 rounded-lg shadow-md">
+                    <p class="text-blue-800 font-semibold">Moves: <span id="moves" class="text-blue-600">0</span></p>
+                </div>
+                <div class="bg-white p-4 rounded-lg shadow-md">
+                    <p class="text-blue-800 font-semibold">Time: <span id="timer" class="text-blue-600">0</span>s</p>
+                </div>
+                <div class="bg-white p-4 rounded-lg shadow-md">
+                    <p class="text-blue-800 font-semibold">Pairs: <span id="pairs" class="text-blue-600">0</span>/8</p>
+                </div>
+            </div>
+            
+            <button id="restart" class="mt-6 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-full transition-all flex items-center gap-2">
+                <i class="fas fa-redo"></i> Restart Game
+            </button>
+        </header>
+
+        <div id="game-board" class="grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-3xl mx-auto">
+            <!-- Cards will be generated here -->
+        </div>
+
+        <div id="win-message" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
+            <div class="bg-white p-8 rounded-xl text-center win-message max-w-md">
+                <h2 class="text-3xl font-bold text-blue-600 mb-4">Congratulations!</h2>
+                <p class="text-lg text-blue-800 mb-2">You won the game in <span id="final-moves" class="font-bold">0</span> moves!</p>
+                <p class="text-lg text-blue-800 mb-6">Time: <span id="final-time" class="font-bold">0</span> seconds</p>
+                <button id="play-again" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-full text-lg transition-all pulse">
+                    <i class="fas fa-play mr-2"></i> Play Again
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <footer class="mt-12 text-center text-blue-600">
+        <p>Made with <i class="fas fa-heart text-blue-400"></i> using HTML, CSS & JavaScript</p>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const gameBoard = document.getElementById('game-board');
+            const movesDisplay = document.getElementById('moves');
+            const timerDisplay = document.getElementById('timer');
+            const pairsDisplay = document.getElementById('pairs');
+            const restartBtn = document.getElementById('restart');
+            const winMessage = document.getElementById('win-message');
+            const finalMoves = document.getElementById('final-moves');
+            const finalTime = document.getElementById('final-time');
+            const playAgainBtn = document.getElementById('play-again');
+
+            let cards = [];
+            let hasFlippedCard = false;
+            let lockBoard = false;
+            let firstCard, secondCard;
+            let moves = 0;
+            let matchedPairs = 0;
+            let timer = 0;
+            let timerInterval;
+            const totalPairs = 8;
+            
+            // Icons for the cards (Font Awesome icons)
+            const icons = [
+                'fa-star', 'fa-heart', 'fa-moon', 'fa-sun',
+                'fa-cloud', 'fa-bolt', 'fa-flag', 'fa-bell',
+                'fa-star', 'fa-heart', 'fa-moon', 'fa-sun',
+                'fa-cloud', 'fa-bolt', 'fa-flag', 'fa-bell'
+            ];
+
+            // Shuffle function
+            function shuffle(array) {
+                for (let i = array.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [array[i], array[j]] = [array[j], array[i]];
+                }
+                return array;
+            }
+
+            // Create cards
+            function createCards() {
+                const shuffledIcons = shuffle([...icons]);
+                
+                gameBoard.innerHTML = '';
+                cards = [];
+                
+                shuffledIcons.forEach((icon, index) => {
+                    const card = document.createElement('div');
+                    card.classList.add('card', 'relative', 'cursor-pointer', 'w-full', 'h-24', 'sm:h-32', 'rounded-lg');
+                    card.dataset.index = index;
+                    
+                    const cardFront = document.createElement('div');
+                    cardFront.classList.add('card-face', 'card-front');
+                    cardFront.innerHTML = `<i class="fas ${icon} text-3xl"></i>`;
+                    
+                    const cardBack = document.createElement('div');
+                    cardBack.classList.add('card-face', 'card-back');
+                    cardBack.innerHTML = '<i class="fas fa-question text-3xl"></i>';
+                    
+                    card.appendChild(cardFront);
+                    card.appendChild(cardBack);
+                    
+                    card.addEventListener('click', flipCard);
+                    gameBoard.appendChild(card);
+                    cards.push(card);
+                });
+            }
+
+            // Flip card
+            function flipCard() {
+                if (lockBoard) return;
+                if (this === firstCard) return;
+                
+                this.classList.add('flipped');
+                
+                if (!hasFlippedCard) {
+                    // First click
+                    hasFlippedCard = true;
+                    firstCard = this;
+                    
+                    // Start timer on first move
+                    if (moves === 0) {
+                        startTimer();
+                    }
+                    return;
+                }
+                
+                // Second click
+                secondCard = this;
+                checkForMatch();
+                updateMoves();
+            }
+
+            // Check for match
+            function checkForMatch() {
+                const firstIcon = firstCard.querySelector('.card-front i').className;
+                const secondIcon = secondCard.querySelector('.card-front i').className;
+                
+                const isMatch = firstIcon === secondIcon;
+                
+                if (isMatch) {
+                    disableCards();
+                    matchedPairs++;
+                    updatePairs();
+                    
+                    if (matchedPairs === totalPairs) {
+                        endGame();
+                    }
+                } else {
+                    unflipCards();
+                }
+            }
+
+            // Disable matched cards
+            function disableCards() {
+                firstCard.removeEventListener('click', flipCard);
+                secondCard.removeEventListener('click', flipCard);
+                
+                // Add matched animation
+                firstCard.classList.add('matched');
+                secondCard.classList.add('matched');
+                
+                resetBoard();
+            }
+
+            // Unflip cards
+            function unflipCards() {
+                lockBoard = true;
+                
+                setTimeout(() => {
+                    firstCard.classList.remove('flipped');
+                    secondCard.classList.remove('flipped');
+                    
+                    resetBoard();
+                }, 1000);
+            }
+
+            // Reset board
+            function resetBoard() {
+                [hasFlippedCard, lockBoard] = [false, false];
+                [firstCard, secondCard] = [null, null];
+            }
+
+            // Update moves
+            function updateMoves() {
+                moves++;
+                movesDisplay.textContent = moves;
+            }
+
+            // Update pairs
+            function updatePairs() {
+                pairsDisplay.textContent = `${matchedPairs}/${totalPairs}`;
+            }
+
+            // Start timer
+            function startTimer() {
+                timer = 0;
+                timerDisplay.textContent = timer;
+                clearInterval(timerInterval);
+                timerInterval = setInterval(() => {
+                    timer++;
+                    timerDisplay.textContent = timer;
+                }, 1000);
+            }
+
+            // End game
+            function endGame() {
+                clearInterval(timerInterval);
+                finalMoves.textContent = moves;
+                finalTime.textContent = timer;
+                winMessage.classList.remove('hidden');
+            }
+
+            // Reset game
+            function resetGame() {
+                moves = 0;
+                matchedPairs = 0;
+                movesDisplay.textContent = moves;
+                pairsDisplay.textContent = `${matchedPairs}/${totalPairs}`;
+                winMessage.classList.add('hidden');
+                clearInterval(timerInterval);
+                timer = 0;
+                timerDisplay.textContent = timer;
+                createCards();
+            }
+
+            // Event listeners
+            restartBtn.addEventListener('click', resetGame);
+            playAgainBtn.addEventListener('click', resetGame);
+
+            // Initialize game
+            resetGame();
+        });
+    </script>
+</body>
+</html>
